@@ -1,3 +1,9 @@
+FACES = [
+    ( 0,  1,  0), ( 0, -1,  0),
+    (-1,  0,  0), ( 1,  0,  0),
+    ( 0,  0,  1), ( 0,  0, -1),
+]
+
 TICKS_PER_SEC = 60
 
 CHUNK_SIZE = 16
@@ -16,3 +22,7 @@ TERMINAL_VELOCITY = 50
 PLAYER_HEIGHT = 2
 
 TEXTURE_PATH = 'texture.png'
+NAMESPACE = 'minecraft'
+
+WORLD_SEED = 3
+USE_LOG = True
