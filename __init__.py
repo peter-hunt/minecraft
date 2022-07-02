@@ -13,7 +13,7 @@ from window import Window
 
 
 if (*version_info,) < (3, 10):
-    raise Exception('This project requires at least Python 3.10 to execute')
+    raise Exception('This project requires at least Python 3.10 to execute!')
 
 if USE_LOG:
     getLogger().setLevel(INFO)
@@ -26,7 +26,7 @@ MODELS = {}
 
 def init_data(namespace):
     """
-    Load the data to global.
+    Load vanilla minecraft data.
 
     Parameters
     ----------
@@ -84,7 +84,7 @@ def setup_fog():
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     # Set the fog color.
-    glFogfv(GL_FOG_COLOR, (GLfloat * 4)(0.5, 0.69, 1.0, 1))
+    glFogfv(GL_FOG_COLOR, (GLfloat * 4)(0.47, 0.65, 1.0, 1))
     # Say we have no preference between rendering speed and quality.
     glHint(GL_FOG_HINT, GL_DONT_CARE)
     # Specify the equation used to compute the blending factor.
@@ -98,7 +98,7 @@ def setup_fog():
 def setup():
     'Basic OpenGL configuration.'
     # Set the color of "clear", i.e. the sky, in rgba.
-    glClearColor(0.5, 0.69, 1.0, 1)
+    glClearColor(0.47, 0.65, 1.0, 1)
     # Enable culling (not rendering) of back-facing facets -- facets that aren't
     # visible to you.
     glEnable(GL_CULL_FACE)
@@ -114,7 +114,7 @@ def setup():
 
 def main():
     window = Window(width=800, height=600,
-                    caption='Minecraft Python (recreation)', resizable=True)
+                    caption='Minecraft Python', resizable=True)
     # Hide the mouse cursor and prevent the mouse from leaving the window.
     window.set_exclusive_mouse(True)
     setup()

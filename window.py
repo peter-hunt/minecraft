@@ -1,5 +1,7 @@
 from math import atan2, cos, degrees, floor, radians, sin, sqrt
+from sys import version_info
 
+import pyglet
 from pyglet import clock, graphics
 from pyglet.gl import *
 from pyglet.shapes import Rectangle
@@ -25,6 +27,9 @@ class Window(PygletWindow):
         self.flying = False
         self.sneaking = False
         self.sprinting = False
+
+        # Whether F3 Debug Screen is toggled
+        self.do_debug = False
 
         # Strafing is moving lateral to the direction you are facing,
         # e.g. moving to the left or right while continuing to face forward.
@@ -72,24 +77,43 @@ class Window(PygletWindow):
             spawny += 1
         self.position = (0, spawny, 0)
 
-        # The label that is displayed in the top left of the canvas.
-        self.labels = []
-        self.label_size = 7
-        self.label_bg = []
+        # Debug screen labels.
+        self.left_labels = []
+        self.left_label_size = 7
+        self.left_label_bg = []
         y = self.height * 0.97
-        for i in range(self.label_size):
-            self.labels.append(
+        for i in range(self.left_label_size):
+            self.left_labels.append(
                 Label(
                     '', font_name='Arial', font_size=self.height * 0.02,
                     bold=True, x=self.width * 0.03, y=y,
                     anchor_x='left', anchor_y='top',
                     color=(255, 255, 255, 255)))
-            self.label_bg.append(
+            self.left_label_bg.append(
                 Rectangle(
                     x=self.width * 0.025, y=y - self.height * 0.035,
                     width=1, height=1,
                     color=(40, 40, 40)))
-            self.label_bg[i].opacity = 40
+            self.left_label_bg[i].opacity = 40
+            y -= self.height * 0.03
+
+        self.right_labels = []
+        self.right_label_size = 1
+        self.right_label_bg = []
+        y = self.height * 0.97
+        for i in range(self.right_label_size):
+            self.right_labels.append(
+                Label(
+                    '', font_name='Arial', font_size=self.height * 0.02,
+                    bold=True, x=self.width * 0.97, y=y,
+                    anchor_x='right', anchor_y='top',
+                    color=(255, 255, 255, 255)))
+            self.right_label_bg.append(
+                Rectangle(
+                    x=self.width * 0.975, y=y - self.height * 0.035,
+                    width=1, height=1,
+                    color=(40, 40, 40)))
+            self.right_label_bg[i].opacity = 40
             y -= self.height * 0.03
 
         # This call schedules the `update()` method to be called
@@ -362,6 +386,8 @@ class Window(PygletWindow):
         elif symbol in self.num_keys:
             index = (symbol - self.num_keys[0]) % len(self.inventory)
             self.block = self.inventory[index]
+        elif symbol == key.F3:
+            self.do_debug = not self.do_debug
 
     def on_key_release(self, symbol, modifiers):
         """
@@ -406,12 +432,21 @@ class Window(PygletWindow):
 
         # labels
         y = height * 0.97
-        for i in range(self.label_size):
-            self.labels[i].font_size = height * 0.02
-            self.labels[i].x = width * 0.03
-            self.labels[i].y = y
-            self.label_bg[i].x = width * 0.025
-            self.label_bg[i].y = y - height * 0.035
+        for i in range(self.left_label_size):
+            self.left_labels[i].font_size = height * 0.02
+            self.left_labels[i].x = width * 0.03
+            self.left_labels[i].y = y
+            self.left_label_bg[i].x = width * 0.025
+            self.left_label_bg[i].y = y - height * 0.035
+            y -= height * 0.03
+
+        y = height * 0.97
+        for i in range(self.right_label_size):
+            self.right_labels[i].font_size = height * 0.02
+            self.right_labels[i].x = width * 0.97
+            self.right_labels[i].y = y
+            self.right_label_bg[i].x = width * 0.975
+            self.right_label_bg[i].y = y - height * 0.035
             y -= height * 0.03
 
     def set_2d(self):
@@ -451,7 +486,10 @@ class Window(PygletWindow):
         self.model.batch.draw()
         self.draw_focused_block()
         self.set_2d()
-        self.draw_label()
+
+        if self.do_debug:
+            self.draw_label()
+
         self.draw_reticle()
 
     def draw_focused_block(self):
@@ -475,32 +513,52 @@ class Window(PygletWindow):
         rot_1 = self.rotation[0] % 360
         x, y, z = self.position
         ix, iy, iz = floor(x), floor(y), floor(z)
-        if self.rotation[0] < 45 or self.rotation[0] >= 315:
+        if rot_1 < 45 or rot_1 >= 315:
             direction = 'north (Towards negative Z)'
-        elif 45 <= self.rotation[0] < 135:
+        elif 45 <= rot_1 < 135:
             direction = 'east (Towards positive X)'
-        elif 135 <= self.rotation[0] < 225:
+        elif 135 <= rot_1 < 225:
             direction = 'south (Towards positive Z)'
         else:
             direction = 'west (Towards negative X)'
 
-        debug_text = f'''Minecraft Python (recreation)
+        left_debug = f'''\
+Minecraft Python (recreation)
 {clock.get_fps():.0f} fps
 
 XYZ: {x:.3f} / {y:.5f} / {z:.3f}
 Block: {ix:d} {iy:d} {iz:d}
 Chunk: {ix%16:d} {iy%16:d} {iz%16:d} in {ix//16} {iy//16} {iz//16}
-Facing: {direction} ({self.rotation[0]:.1f} / {self.rotation[1]:.1f})
-'''[:-1].split('\n')
-        # len(self.model._shown), len(self.model.world)
-        for i in range(min(self.label_size, len(debug_text))):
-            self.labels[i].text = debug_text[i]
+Facing: {direction} ({rot_1:.1f} / {self.rotation[1]:.1f})\
+'''.split('\n')
 
-        for label in self.labels:
-            self.label_bg[i].width = label.content_width + self.width + 0.01
-            self.label_bg[i].height = label.content_height + self.height + 0.01
-            self.label_bg[i].draw()
-        for label in self.labels:
+        # len(self.model._shown), len(self.model.world)
+        for i in range(min(self.left_label_size, len(left_debug))):
+            self.left_labels[i].text = left_debug[i]
+
+        for label in self.left_labels:
+            self.left_label_bg[i].width = label.content_width + self.width + 0.01
+            self.left_label_bg[i].height = label.content_height + self.height + 0.01
+            self.left_label_bg[i].x = self.width * 0.975 - self.left_label_bg[i].width
+            self.left_label_bg[i].draw()
+
+        right_debug = f'''\
+Python: {version_info.major}.{version_info.minor}.{version_info.micro}\
+'''.split('\n')
+
+        # len(self.model._shown), len(self.model.world)
+        for i in range(min(self.right_label_size, len(right_debug))):
+            self.right_labels[i].text = right_debug[i]
+
+        for label in self.right_labels:
+            self.right_label_bg[i].width = label.content_width + self.width + 0.01
+            self.right_label_bg[i].height = label.content_height + self.height + 0.01
+            self.right_label_bg[i].x = self.width * 0.975 - self.right_label_bg[i].width
+            self.right_label_bg[i].draw()
+
+        for label in self.left_labels:
+            label.draw()
+        for label in self.right_labels:
             label.draw()
 
     def draw_reticle(self):

@@ -191,14 +191,14 @@ class Model(object):
         """
 
         name = self.world[position]
-        texture = BLOCKS[name]
-        self.shown[position] = texture
+        coords = BLOCKS[name]
+        self.shown[position] = coords
         if immediate:
-            self._show_block(position, texture)
+            self._show_block(position, coords)
         else:
-            self._enqueue(self._show_block, position, texture)
+            self._enqueue(self._show_block, position, coords)
 
-    def _show_block(self, position, texture):
+    def _show_block(self, position, coords):
         """
         Private implementation of the `show_block()` method.
 
@@ -206,19 +206,19 @@ class Model(object):
         ----------
         position : tuple of len 3
             The (x, y, z) position of the block to show.
-        texture : list of len 3
-            The coordinates of the texture squares. Use `tex_coords()` to
+        coords : list of len 3
+            The coordinates of the coords squares. Use `tex_coords()` to
             generate.
         """
 
         x, y, z = position
         vertex_data = cube_vertices(x, y, z, 0.5)
-        texture_data = sum(texture, start=())
+        coords_data = sum(coords, start=())
         # create vertex list
         # FIXME Maybe `add_indexed()` should be used instead
         self._shown[position] = self.batch.add(24, GL_QUADS, self.group,
             ('v3f/static', vertex_data),
-            ('t2f/static', texture_data))
+            ('t2f/static', coords_data))
 
     def hide_block(self, position, immediate=True):
         """
