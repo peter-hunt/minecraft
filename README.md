@@ -2,13 +2,13 @@
 
 This is a Minecraft Recreation project with Python.
 
-The origin of this project: https://github.com/fogleman/Craft
+This project started from: https://github.com/fogleman/Craft
 
 ## Usage
 
 ```shell
 pip install -r requirements.txt
-python main.py
+python .
 ```
 
 ## Controls:
