@@ -1,31 +1,22 @@
-from math import atan2, cos, degrees, floor, radians, sin, sqrt
-from random import choice as randchoice, randint
-import time
-
 from collections import deque
-from pyglet import image
+from math import atan2, cos, degrees, floor, radians, sin, sqrt
+from random import choice as randchoice, randint, seed
+from time import perf_counter
+
+from perlin_noise import PerlinNoise
+
+from pyglet import app, clock, graphics, image
 from pyglet.gl import *
 from pyglet.graphics import Batch, TextureGroup
 from pyglet.shapes import Rectangle
 from pyglet.text import Label
 from pyglet.window import Window as PygletWindow, key, mouse
 
+from constants import *
+
+
 keyboard = key.KeyStateHandler()
 
-TICKS_PER_SEC = 60
-
-# Size of sectors used to ease block loading.
-SECTOR_SIZE = 16
-
-WALKING_SPEED = 4.317
-SPRINTING_SPEED = 5.612
-SNEAKING_SPEED = 1.3
-FLYING_SPEED = 11
-FLYING_Y_SPEED = 3
-FLYING_SPRINT_SPEED = 22
-
-GRAVITY = 20
-MAX_JUMP_HEIGHT = 1.25 # About the height of a block.
 # To derive the formula for calculating jump speed, first solve
 #    v_t = v_0 + a * t
 # for the time at which you achieve maximum height, where a is the acceleration
@@ -34,9 +25,8 @@ MAX_JUMP_HEIGHT = 1.25 # About the height of a block.
 # Use t and the desired MAX_JUMP_HEIGHT to solve for v_0 (jump speed) in
 #    s = s_0 + v_0 * t + (a * t^2) / 2
 JUMP_SPEED = sqrt(2 * GRAVITY * MAX_JUMP_HEIGHT)
-TERMINAL_VELOCITY = 50
 
-PLAYER_HEIGHT = 2
+WORLD_SEED = 3
 
 def cube_vertices(x, y, z, n):
     'Return the vertices of the cube at position x, y, z with size 2*n.'
@@ -52,9 +42,8 @@ def cube_vertices(x, y, z, n):
 
 def tex_coord(x, y, n=4):
     'Return the bounding vertices of the texture square.'
-    m = 1.0 / n
-    dx = x * m
-    dy = y * m
+    m = 1 / n
+    dx, dy = x * m, y * m
     return dx, dy, dx + m, dy, dx + m, dy + m, dx, dy + m
 
 
@@ -63,16 +52,11 @@ def tex_coords(top, bottom, side):
     top = tex_coord(*top)
     bottom = tex_coord(*bottom)
     side = tex_coord(*side)
-    result = []
-    result.extend(top)
-    result.extend(bottom)
-    result.extend(side * 4)
-    return result
+    return [top, bottom, side, side, side, side]
 
 
-TEXTURE_PATH = 'texture.png'
-
-TEXTURES = {
+BLOCKS = {
+    'dirt': tex_coords((0, 1), (0, 1), (0, 1)),
     'grass_block': tex_coords((1, 0), (0, 1), (0, 0)),
     'sand': tex_coords((1, 1), (1, 1), (1, 1)),
     'bricks': tex_coords((2, 0), (2, 0), (2, 0)),
@@ -80,12 +64,9 @@ TEXTURES = {
 }
 
 FACES = [
-    ( 0, 1, 0),
-    ( 0,-1, 0),
-    (-1, 0, 0),
-    ( 1, 0, 0),
-    ( 0, 0, 1),
-    ( 0, 0,-1),
+    ( 0,  1,  0), ( 0, -1,  0),
+    (-1,  0,  0), ( 1,  0,  0),
+    ( 0,  0,  1), ( 0,  0, -1),
 ]
 
 
@@ -121,8 +102,7 @@ def sectorize(position):
     """
 
     x, y, z = normalize(position)
-    x, y, z = x // SECTOR_SIZE, y // SECTOR_SIZE, z // SECTOR_SIZE
-    return (x, 0, z)
+    return x // CHUNK_SIZE, 0, z // CHUNK_SIZE
 
 
 class Model(object):
@@ -150,42 +130,28 @@ class Model(object):
         # _show_block() and _hide_block() calls
         self.queue = deque()
 
-        self._initialize()
+        self.generate_terrain()
 
-    def _initialize(self):
-        'Initialize the world by placing all the blocks.'
-        n = 80  # 1/2 width and height of world
-        s = 1  # step size
-        y = 0  # initial y height
-        for x in range(-n, n + 1, s):
-            for z in range(-n, n + 1, s):
-                # create a layer stone an grass everywhere.
-                self.add_block((x, y - 2, z), 'grass_block', immediate=False)
-                self.add_block((x, y - 3, z), 'bedrock', immediate=False)
-                if x in (-n, n) or z in (-n, n):
-                    # create outer walls.
-                    for dy in range(-2, 3):
-                        self.add_block((x, y + dy, z), 'bedrock', immediate=False)
+    def generate_terrain(self):
+        'Generate the world terrain.'
 
-        # generate the hills randomly
-        o = n - 10
-        for _ in range(120):
-            a = randint(-o, o)  # x position of the hill
-            b = randint(-o, o)  # z position of the hill
-            c = -1  # base of the hill
-            h = randint(1, 6)  # height of the hill
-            s = randint(4, 8)  # 2 * s is the side length of the hill
-            d = 1  # how quickly to taper off the hills
-            name = randchoice(['grass_block', 'sand', 'bricks'])
-            for y in range(c, c + h):
-                for x in range(a - s, a + s + 1):
-                    for z in range(b - s, b + s + 1):
-                        if (x - a) ** 2 + (z - b) ** 2 > (s + 1) ** 2:
-                            continue
-                        if (x - 0) ** 2 + (z - 0) ** 2 < 5 ** 2:
-                            continue
-                        self.add_block((x, y, z), name, immediate=False)
-                s -= d  # decrement side length so hills taper off
+        noise1 = PerlinNoise(octaves=7, seed=WORLD_SEED)
+        noise2 = PerlinNoise(octaves=9, seed=WORLD_SEED + 1)
+        noise3 = PerlinNoise(octaves=10, seed=WORLD_SEED + 2)
+
+        n = 64  # 1 / 2 width and height of world
+        for x in range(-n, n + 1):
+            for z in range(-n, n + 1):
+                y = 15
+                y += noise1((x / 150, z / 150)) * 8
+                y += noise2((x / 700, z / 700)) * 15
+                y += noise3((x / 2000, z / 32000)) * 30
+                y = floor(y)
+
+                self.add_block((x, 0, z), 'bedrock', immediate=False)
+                for _y in range(1, y):
+                    self.add_block((x, _y, z), 'dirt', immediate=False)
+                self.add_block((x, y, z), 'grass_block', immediate=False)
 
     def hit_test(self, position, vector, max_distance=8):
         """
@@ -303,7 +269,7 @@ class Model(object):
         """
 
         name = self.world[position]
-        texture = TEXTURES[name]
+        texture = BLOCKS[name]
         self.shown[position] = texture
         if immediate:
             self._show_block(position, texture)
@@ -325,7 +291,7 @@ class Model(object):
 
         x, y, z = position
         vertex_data = cube_vertices(x, y, z, 0.5)
-        texture_data = list(texture)
+        texture_data = sum(texture, start=())
         # create vertex list
         # FIXME Maybe `add_indexed()` should be used instead
         self._shown[position] = self.batch.add(24, GL_QUADS, self.group,
@@ -386,7 +352,7 @@ class Model(object):
         after_set = set()
         pad = 4
         for dx in range(-pad, pad + 1):
-            for dy in [0]:  # range(-pad, pad + 1):
+            for dy in (0,):  # range(-pad, pad + 1):
                 for dz in range(-pad, pad + 1):
                     if dx ** 2 + dy ** 2 + dz ** 2 > (pad + 1) ** 2:
                         continue
@@ -420,8 +386,8 @@ class Model(object):
         add_block() or remove_block() was called with immediate=False
         """
 
-        start = time.perf_counter()
-        while self.queue and time.perf_counter() - start < 1.0 / TICKS_PER_SEC:
+        start = perf_counter()
+        while self.queue and perf_counter() - start < 1 / TICKS_PER_SEC:
             self._dequeue()
 
     def process_entire_queue(self):
@@ -436,8 +402,6 @@ class Window(PygletWindow):
 
         # Whether or not the window exclusively captures the mouse.
         self.exclusive = False
-
-        # When flying gravity has no effect and speed is increased.
         self.flying = False
         self.sneaking = False
         self.sprinting = False
@@ -449,10 +413,6 @@ class Window(PygletWindow):
         # otherwise. The second element is -1 when moving left, 1 when moving
         # right, and 0 otherwise.
         self.strafe = [0, 0]
-
-        # Current (x, y, z) position in the world, specified with floats. Note
-        # that, perhaps unlike in math class, the y-axis is the vertical axis.
-        self.position = (0, 0, 0)
 
         # First element is rotation of the player in the x-z plane (ground
         # plane) measured from the z-axis down. The second is the rotation
@@ -472,7 +432,7 @@ class Window(PygletWindow):
         self.dy = 0
 
         # A list of blocks the player can place. Hit num keys to cycle.
-        self.inventory = ['bricks', 'grass_block', 'sand']
+        self.inventory = ['dirt', 'grass_block', 'sand', 'bricks']
 
         # The current block the user can place. Hit num keys to cycle.
         self.block = self.inventory[0]
@@ -484,6 +444,13 @@ class Window(PygletWindow):
 
         # Instance of the model that handles the world.
         self.model = Model()
+
+        spawny = 1
+        self.position = (0, 1, 0)
+        while self.position in self.model.world:
+            self.position = (0, spawny, 0)
+            spawny += 1
+        self.position = (0, spawny, 0)
 
         # The label that is displayed in the top left of the canvas.
         self.labels = []
@@ -507,7 +474,7 @@ class Window(PygletWindow):
 
         # This call schedules the `update()` method to be called
         # TICKS_PER_SEC. This is the main game event loop.
-        pyglet.clock.schedule_interval(self.update, 1.0 / TICKS_PER_SEC)
+        clock.schedule_interval(self.update, 1 / TICKS_PER_SEC)
 
         self.push_handlers(keyboard)
 
@@ -569,6 +536,11 @@ class Window(PygletWindow):
             dy = 0
             dx = 0
             dz = 0
+            if self.flying:
+                if keyboard[key.SPACE]:
+                    dy += FLYING_Y_SPEED
+                if keyboard[key.LSHIFT]:
+                    dy -= FLYING_Y_SPEED
         return dx, dy, dz
 
     def update(self, dt):
@@ -589,7 +561,7 @@ class Window(PygletWindow):
             if self.sector is None:
                 self.model.process_entire_queue()
             self.sector = sector
-        m = 8
+        m = 8  # TODO: increase this
         dt = min(dt, 0.2)
         for _ in range(m):
             self._update(dt / m)
@@ -613,6 +585,7 @@ class Window(PygletWindow):
                 speed = FLYING_SPRINT_SPEED if self.flying else SPRINTING_SPEED
             else:
                 speed = FLYING_SPEED if self.flying else WALKING_SPEED
+
         d = dt * speed # distance covered this tick.
         dx, dy, dz = self.get_motion_vector()
         # New position in space, before accounting for gravity.
@@ -703,7 +676,7 @@ class Window(PygletWindow):
                 # ON OSX, control + left click = right click.
                 if previous:
                     self.model.add_block(previous, self.block)
-            elif button == pyglet.window.mouse.LEFT and block:
+            elif button == mouse.LEFT and block:
                 name = self.model.world[block]
                 if name != 'bedrock':
                     self.model.remove_block(block)
@@ -807,7 +780,7 @@ class Window(PygletWindow):
             self.reticle.delete()
         x, y = width // 2, height // 2
         n = 10
-        self.reticle = pyglet.graphics.vertex_list(4,
+        self.reticle = graphics.vertex_list(4,
             ('v2i', (x - n, y, x + n, y, x, y - n, x, y + n))
         )
 
@@ -892,7 +865,7 @@ class Window(PygletWindow):
             direction = 'west (Towards negative X)'
 
         debug_text = f'''Minecraft Python (recreation)
-{pyglet.clock.get_fps():.0f} fps
+{clock.get_fps():.0f} fps
 
 XYZ: {x:.3f} / {y:.5f} / {z:.3f}
 Block: {ix:d} {iy:d} {iz:d}
@@ -903,7 +876,6 @@ Facing: {direction} ({self.rotation[0]:.1f} / {self.rotation[1]:.1f})
         for i in range(min(self.label_size, len(debug_text))):
             self.labels[i].text = debug_text[i]
 
-        label_rect = Batch()
         for label in self.labels:
             self.label_bg[i].width = label.content_width + self.width + 0.01
             self.label_bg[i].height = label.content_height + self.height + 0.01
@@ -955,11 +927,12 @@ def setup():
 
 
 def main():
-    window = Window(width=800, height=600, caption='Python Craft', resizable=True)
+    window = Window(width=800, height=600,
+                    caption='Minecraft Python (recreation)', resizable=True)
     # Hide the mouse cursor and prevent the mouse from leaving the window.
     window.set_exclusive_mouse(True)
     setup()
-    pyglet.app.run()
+    app.run()
 
 
 if __name__ == '__main__':
