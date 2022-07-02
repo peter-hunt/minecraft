@@ -17,3 +17,4 @@ python .
 - Space to jump/ascend
 - Shift to sneak/descend
 - Alt to sprint
+- F3 to toggle debug screen
