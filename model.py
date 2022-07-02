@@ -6,15 +6,16 @@ from time import perf_counter
 from perlin_noise import PerlinNoise
 from pyglet import image
 from pyglet.gl import *
-from pyglet.graphics import Batch, TextureGroup
+from pyglet.graphics import Batch, TextureGroup, VertextList
 
 from constants import *
 from functions import *
+from utils import *
 
 
 __all__ = ['Model']
 
-BLOCKS = {
+BLOCKS: dict[str, list[list[number]]] = {
     'dirt': tex_coords((0, 1), (0, 1), (0, 1)),
     'grass_block': tex_coords((1, 0), (0, 1), (0, 0)),
     'sand': tex_coords((1, 1), (1, 1), (1, 1)),
@@ -26,27 +27,27 @@ BLOCKS = {
 class Model(object):
     def __init__(self):
         # A Batch is a collection of vertex lists for batched rendering.
-        self.batch = Batch()
+        self.batch: Batch = Batch()
 
         # A TextureGroup manages an OpenGL texture.
-        self.group = TextureGroup(image.load(TEXTURE_PATH).get_texture())
+        self.group: TextureGroup = TextureGroup(image.load(TEXTURE_PATH).get_texture())
 
         # A mapping from position to the name of the block at that position.
         # This defines all the blocks that are currently in the world.
-        self.world = {}
+        self.world: dict[tuple[int], str] = {}
 
         # Same mapping as `world` but only contains blocks that are shown.
-        self.shown = {}
+        self.shown: dict[tuple[int], list[list[int]]] = {}
 
         # Mapping from position to a pyglet `VertextList` for all shown blocks.
-        self._shown = {}
+        self._shown: dict[tuple[int], VertextList] = {}
 
         # Mapping from sector to a list of positions inside that sector.
-        self.sectors = {}
+        self.sectors: dict[tuple[int], list[tuple[int]]] = {}
 
         # Simple function queue implementation. The queue is populated with
         # _show_block() and _hide_block() calls
-        self.queue = deque()
+        self.queue: deque = deque()
 
         self.generate_terrain()
 
@@ -75,7 +76,8 @@ class Model(object):
 
         info('Generated world terrain!')
 
-    def hit_test(self, position, vector, max_distance=8):
+    def hit_test(self, position: tuple[number],
+                 vector: tuple[number], max_distance: number = 8) -> tuple[None | tuple[number]]:
         """
         Line of sight search from current position. If a block is
         intersected it is returned, along with the block previously in the line
@@ -103,7 +105,7 @@ class Model(object):
             x, y, z = x + dx / m, y + dy / m, z + dz / m
         return None, None
 
-    def exposed(self, position):
+    def exposed(self, position: tuple[int]) -> bool:
         """
         Returns False is given `position` is surrounded on all 6 sides by
         blocks, True otherwise.
@@ -115,7 +117,7 @@ class Model(object):
                 return True
         return False
 
-    def add_block(self, position, name, immediate=True):
+    def add_block(self, position: tuple[int], name: str, immediate: bool = True):
         """
         Add a block with the given `name` and `position` to the world.
 
@@ -138,7 +140,7 @@ class Model(object):
                 self.show_block(position)
             self.check_neighbors(position)
 
-    def remove_block(self, position, immediate=True):
+    def remove_block(self, position: tuple[int], immediate: bool = True):
         """
         Remove the block at the given `position`.
 
@@ -157,7 +159,7 @@ class Model(object):
                 self.hide_block(position)
             self.check_neighbors(position)
 
-    def check_neighbors(self, position):
+    def check_neighbors(self, position: tuple[int]):
         """
         Check all blocks surrounding `position` and ensure their visual
         state is current. This means hiding blocks that are not exposed and
@@ -177,7 +179,7 @@ class Model(object):
                 if key in self.shown:
                     self.hide_block(key)
 
-    def show_block(self, position, immediate=True):
+    def show_block(self, position: tuple[int], immediate: bool = True):
         """
         Show the block at the given `position`. This method assumes the
         block has already been added with add_block()
@@ -198,7 +200,7 @@ class Model(object):
         else:
             self._enqueue(self._show_block, position, coords)
 
-    def _show_block(self, position, coords):
+    def _show_block(self, position: tuple[int], coords: list[list[number]]):
         """
         Private implementation of the `show_block()` method.
 
@@ -220,7 +222,7 @@ class Model(object):
             ('v3f/static', vertex_data),
             ('t2f/static', coords_data))
 
-    def hide_block(self, position, immediate=True):
+    def hide_block(self, position: tuple[int], immediate: bool = True):
         """
         Hide the block at the given `position`. Hiding does not remove the
         block from the world.
@@ -239,11 +241,11 @@ class Model(object):
         else:
             self._enqueue(self._hide_block, position)
 
-    def _hide_block(self, position):
+    def _hide_block(self, position: tuple[int]):
         "Private implementation of the 'hide_block()` method."
         self._shown.pop(position).delete()
 
-    def show_sector(self, sector):
+    def show_sector(self, sector: tuple[int]):
         """
         Ensure all blocks in the given sector that should be shown are
         drawn to the canvas.
@@ -253,7 +255,7 @@ class Model(object):
             if position not in self.shown and self.exposed(position):
                 self.show_block(position, False)
 
-    def hide_sector(self, sector):
+    def hide_sector(self, sector: tuple[int]):
         """
         Ensure all blocks in the given sector that should be hidden are
         removed from the canvas.
@@ -263,7 +265,7 @@ class Model(object):
             if position in self.shown:
                 self.hide_block(position, False)
 
-    def change_sectors(self, before, after):
+    def change_sectors(self, before: tuple[int], after: tuple[int]):
         """
         Move from sector `before` to sector `after`. A sector is a
         contiguous x, y sub-region of world. Sectors are used to speed up

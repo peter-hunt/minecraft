@@ -1,4 +1,5 @@
 from constants import *
+from utils import *
 
 
 __all__ = [
@@ -6,7 +7,7 @@ __all__ = [
 ]
 
 
-def cube_vertices(x, y, z, n):
+def cube_vertices(x: number, y: number, z: number, n: number) -> list[number]:
     'Return the vertices of the cube at position x, y, z with size 2*n.'
     return [
         x-n, y+n, z-n, x-n, y+n, z+n, x+n, y+n, z+n, x+n, y+n, z-n,  # top
@@ -18,7 +19,7 @@ def cube_vertices(x, y, z, n):
     ]
 
 
-def normalize(position):
+def normalize(position: tuple[number]) -> tuple[int]:
     """
     Accepts `position` of arbitrary precision and returns the block
     containing that position.
@@ -36,7 +37,7 @@ def normalize(position):
     return round(x), round(y), round(z)
 
 
-def sectorize(position):
+def sectorize(position: tuple[number]) -> tuple[int]:
     """
     Returns a tuple representing the sector for the given `position`.
 
@@ -53,14 +54,14 @@ def sectorize(position):
     return x // CHUNK_SIZE, 0, z // CHUNK_SIZE
 
 
-def tex_coord(x, y, n=4):
+def tex_coord(x: int, y: int, n: int = 4) -> list[number]:
     'Return the bounding vertices of the texture square.'
     m = 1 / n
     dx, dy = x * m, y * m
     return dx, dy, dx + m, dy, dx + m, dy + m, dx, dy + m
 
 
-def tex_coords(top, bottom, side):
+def tex_coords(top: tuple[int], bottom: tuple[int], side: tuple[int]) -> list[list[number]]:
     'Return a list of the texture squares for the top, bottom and side.'
     top = tex_coord(*top)
     bottom = tex_coord(*bottom)

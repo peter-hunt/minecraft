@@ -6,11 +6,12 @@ from pyglet import clock, graphics
 from pyglet.gl import *
 from pyglet.shapes import Rectangle
 from pyglet.text import Label
-from pyglet.window import Window as PygletWindow, key, mouse
+from pyglet.window import Window as PygletWindow, VertextList, key, mouse
 
 from constants import *
 from functions import *
 from model import Model
+from utils import *
 
 
 keyboard = key.KeyStateHandler()
@@ -23,13 +24,13 @@ class Window(PygletWindow):
         super(Window, self).__init__(*args, **kwargs)
 
         # Whether or not the window exclusively captures the mouse.
-        self.exclusive = False
-        self.flying = False
-        self.sneaking = False
-        self.sprinting = False
+        self.exclusive: bool = False
+        self.flying: bool = False
+        self.sneaking: bool = False
+        self.sprinting: bool = False
 
         # Whether F3 Debug Screen is toggled
-        self.do_debug = False
+        self.do_debug: bool = False
 
         # Strafing is moving lateral to the direction you are facing,
         # e.g. moving to the left or right while continuing to face forward.
@@ -37,7 +38,7 @@ class Window(PygletWindow):
         # First element is -1 when moving forward, 1 when moving back, and 0
         # otherwise. The second element is -1 when moving left, 1 when moving
         # right, and 0 otherwise.
-        self.strafe = [0, 0]
+        self.strafe: list[number] = [0, 0]
 
         # First element is rotation of the player in the x-z plane (ground
         # plane) measured from the z-axis down. The second is the rotation
@@ -45,42 +46,42 @@ class Window(PygletWindow):
         #
         # The vertical plane rotation ranges from -90 (looking straight down) to
         # 90 (looking straight up). The horizontal rotation range is unbounded.
-        self.rotation = (0, 0)
+        self.rotation: tuple[number] = (0, 0)
 
         # Which sector the player is currently in.
-        self.sector = None
+        self.sector: None | tuple[int] = None
 
         # The crosshairs at the center of the screen.
-        self.reticle = None
+        self.reticle: None | VertextList = None
 
         # Velocity in the y (upward) direction.
-        self.dy = 0
+        self.dy: number = 0
 
         # A list of blocks the player can place. Hit num keys to cycle.
-        self.inventory = ['dirt', 'grass_block', 'sand', 'bricks']
+        self.inventory: list[str] = ['dirt', 'grass_block', 'sand', 'bricks']
 
         # The current block the user can place. Hit num keys to cycle.
-        self.block = self.inventory[0]
+        self.block: str = self.inventory[0]
 
         # Convenience list of num keys.
-        self.num_keys = [
+        self.num_keys: list[int] = [
             key._1, key._2, key._3, key._4, key._5,
             key._6, key._7, key._8, key._9, key._0]
 
         # Instance of the model that handles the world.
-        self.model = Model()
+        self.model: Model = Model()
 
         spawny = 1
-        self.position = (0, 1, 0)
+        self.position: tuple[number] = (0, 1, 0)
         while self.position in self.model.world:
             self.position = (0, spawny, 0)
             spawny += 1
-        self.position = (0, spawny, 0)
+        self.position: tuple[number] = (0, spawny, 0)
 
         # Debug screen labels.
-        self.left_labels = []
-        self.left_label_size = 7
-        self.left_label_bg = []
+        self.left_labels: list[Label] = []
+        self.left_label_size: int = 7
+        self.left_label_bg: list[Rectangle] = []
         y = self.height * 0.97
         for i in range(self.left_label_size):
             self.left_labels.append(
@@ -97,9 +98,9 @@ class Window(PygletWindow):
             self.left_label_bg[i].opacity = 40
             y -= self.height * 0.03
 
-        self.right_labels = []
-        self.right_label_size = 1
-        self.right_label_bg = []
+        self.right_labels: list[Label] = []
+        self.right_label_size: int = 1
+        self.right_label_bg: list[Rectangle] = []
         y = self.height * 0.97
         for i in range(self.right_label_size):
             self.right_labels.append(
@@ -122,7 +123,7 @@ class Window(PygletWindow):
 
         self.push_handlers(keyboard)
 
-    def set_exclusive_mouse(self, exclusive):
+    def set_exclusive_mouse(self, exclusive: bool):
         """
         If `exclusive` is True, the game will capture the mouse, if False
         the game will ignore the mouse.
@@ -131,7 +132,7 @@ class Window(PygletWindow):
         super(Window, self).set_exclusive_mouse(exclusive)
         self.exclusive = exclusive
 
-    def get_sight_vector(self):
+    def get_sight_vector(self) -> tuple[number]:
         """
         Returns the current line of sight vector indicating the direction
         the player is looking.
@@ -144,12 +145,9 @@ class Window(PygletWindow):
         m = cos(radians(y))
         # dy ranges from -1 to 1 and is -1 when looking straight down and 1 when
         # looking straight up.
-        dy = sin(radians(y))
-        dx = cos(radians(x - 90)) * m
-        dz = sin(radians(x - 90)) * m
-        return (dx, dy, dz)
+        return cos(radians(x - 90)) * m, sin(radians(y)), sin(radians(x - 90)) * m
 
-    def get_motion_vector(self):
+    def get_motion_vector(self) -> tuple[number]:
         """
         Returns the current motion vector indicating the velocity of the
         player.
@@ -161,9 +159,9 @@ class Window(PygletWindow):
         """
 
         if any(self.strafe):
-            x, y = self.rotation
+            x_rotation, _ = self.rotation
             strafe = degrees(atan2(*self.strafe))
-            x_angle = radians(x + strafe)
+            x_angle = radians(x_rotation + strafe)
             if self.flying:
                 dx = cos(x_angle)
                 dy = 0
@@ -187,7 +185,7 @@ class Window(PygletWindow):
                     dy -= FLYING_Y_SPEED
         return dx, dy, dz
 
-    def update(self, dt):
+    def update(self, dt: number):
         """
         This method is scheduled to be called repeatedly by the pyglet
         clock.
@@ -210,7 +208,7 @@ class Window(PygletWindow):
         for _ in range(m):
             self._update(dt / m)
 
-    def _update(self, dt):
+    def _update(self, dt: number):
         """
         Private implementation of the `update()` method. This is where most
         of the motion logic lives, along with gravity and collision detection.
@@ -247,7 +245,7 @@ class Window(PygletWindow):
         x, y, z = self.collide((x + dx, y + dy, z + dz), PLAYER_HEIGHT)
         self.position = (x, y, z)
 
-    def collide(self, position, height):
+    def collide(self, position: tuple[number], height: number) -> tuple[number]:
         """
         Checks to see if the player at the given `position` and `height`
         is colliding with any blocks in the world.
@@ -294,7 +292,7 @@ class Window(PygletWindow):
                     break
         return tuple(p)
 
-    def on_mouse_press(self, x, y, button, modifiers):
+    def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
         """
         Called when a mouse button is pressed. See pyglet docs for button
         amd modifier mappings.
@@ -327,7 +325,7 @@ class Window(PygletWindow):
         else:
             self.set_exclusive_mouse(True)
 
-    def on_mouse_motion(self, x, y, dx, dy):
+    def on_mouse_motion(self, x: int, y: int, dx: number, dy: number):
         """
         Called when the player moves the mouse.
 
@@ -347,7 +345,7 @@ class Window(PygletWindow):
             y = max(-90, min(90, y))
             self.rotation = (x, y)
 
-    def on_key_press(self, symbol, modifiers):
+    def on_key_press(self, symbol: int, modifiers: int):
         """
         Called when the player presses a key. See pyglet docs for key
         mappings.
@@ -389,7 +387,7 @@ class Window(PygletWindow):
         elif symbol == key.F3:
             self.do_debug = not self.do_debug
 
-    def on_key_release(self, symbol, modifiers):
+    def on_key_release(self, symbol: int, modifiers: int):
         """
         Called when the player releases a key. See pyglet docs for key
         mappings.
@@ -419,7 +417,7 @@ class Window(PygletWindow):
             if self.flying:
                 self.dy -= FLYING_Y_SPEED
 
-    def on_resize(self, width, height):
+    def on_resize(self, width: int, height: int):
         'Called when the window is resized to a new `width` and `height`.'
         # reticle
         if self.reticle:

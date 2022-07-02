@@ -24,7 +24,7 @@ TEXTURES = {}
 MODELS = {}
 
 
-def init_data(namespace):
+def init_data(namespace: str):
     """
     Load vanilla minecraft data.
 
